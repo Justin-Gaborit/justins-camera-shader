@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang='en'>
+  <head>
+
+    <style>body{ margin:0; background:black }</style>
+    <link rel = "stylesheet" type = "text/css" href = "style.css">
+
+    <!-- import tweakpane -->
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.0.7/dist/tweakpane.min.js"></script>
+
+  </head>
+  <body>
+
+    <p class='title_text'>Justin's Webcam Shader!</p>
+
+    <canvas id='gl'></canvas>
+    <div class='outer'>
+      <div id='container' class='inner'>
+        <ul class=list_text>
+          <li>press 'a' or 'd' to increase/decrease noise scale</li>
+          <li>press 'q' or 'e' to increase/decrease square tiling</li>
+          <li>press 'z' or 'c' to increase/decrease point position</li>
+        </ul>
+      </div>
+    </div>
+  </body>
+
+  <!-- vertex shader, as simple as possible -->
+  <script id='vertex' type='x-shader/x-vertex'>
+    attribute vec2 a_position;
+
+    void main() {
+      gl_Position = vec4( a_position, 0, 1 );
+    }
+  </script>
+
+  <!-- fragment shader -->
+  <script id='fragment' type='x-shader/x-fragment'>
+    #ifdef GL_ES
+    precision mediump float;
+    #endif
+
+    uniform float foo;
+    uniform float time;
+    uniform float squares;
+    uniform float positionval;
+    uniform vec2 resolution;
+    uniform vec2 mouse;
+    uniform sampler2D uSampler;
+
+    vec2 random2( vec2 p ) 
+    {
+      return fract(sin(vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3))))*43758.5453);
+    }
+
+    void main() {
+    //float foo = 6.000;
+    vec2 st = gl_FragCoord.xy/resolution.xy;
+    st.x *= resolution.x/resolution.y;
+
+    vec3 overlay_hue = vec3(0.790,0.191,0.008);
+
+   
+    st *= foo;
+
+    
+    vec2 i_st = floor(st);
+    vec2 f_st = fract(st);
+
+    float m_dist = 1.;
+
+    for (int y= -1; y <= 1; y++) 
+    {
+          for (int x= -1; x <= 1; x++) 
+          {
+            // Neighbor place in the grid
+            vec2 neighbor = vec2(float(x),float(y));
+
+            // Random position from current + neighbor place in the grid
+            vec2 point = random2(i_st + neighbor);
+
+             // Animate the point
+            point = squares + positionval*sin(time + 6.2831*point);
+
+            // Vector between the pixel and the point
+            vec2 diff = neighbor + point - f_st;
+
+            // Distance to the point
+            float dist = length(diff);
+
+            // Keep the closer distance
+            m_dist = min(m_dist, dist);
+          }
+    }
+
+         overlay_hue += m_dist;
+         overlay_hue += 1.-step(0.0, m_dist);
+
+      vec2 pos = gl_FragCoord.xy / resolution;
+      
+      // just get rgb from the texture to invert.
+      vec3 color = texture2D( uSampler, pos).rgb;
+      
+      gl_FragColor = vec4( vec3( color + overlay_hue), 1. );
+    }
+  </script>
+
+      <!--Script for handling keyboard inputs-->
+      <script type='text/javascript'>
+        
+      var current = 0;
+
+    document.addEventListener('keydown', function(event) 
+    {
+      //if A pressed add scale
+      if(event.keyCode == 65) 
+      {
+        fooval += 1.000;
+        //fooval = current;
+        //alert('fooval = ' + fooval);
+        //alert('current = ' + current);
+      }
+      else if(event.keyCode == 68)
+      {
+        fooval -= 1.000;
+      }
+      else if(event.keyCode == 81)
+      {
+        squaresval += 0.500;
+      }
+      else if(event.keyCode == 69)
+      {
+        squaresval -= 0.500;
+      }
+      else if(event.keyCode == 90)
+      {
+        positionvalues += 0.500;
+      }
+      else if(event.keyCode == 67)
+      {
+        positionvalues -= 0.500;
+      }
+    });
+      </script>
+
+
+
+  <script type='text/javascript'>
+    // kinda global variables... upvalues to each closure of each function in this script tag
+    let gl, uTime, uRes, drawProgram, videoTexture
+    var fooval = 0.000;
+    var squaresval = 0.5;
+    var positionvalues = 0.5;
+    //var fooval = current;
+    //foolvar = Tweakpane.get()
+    const widthSize = 512
+    const heightSize = 512
+
+    window.onload = function() {
+      const canvas = document.getElementById( 'gl' )
+      gl = canvas.getContext( 'webgl' )
+      //canvas.width = canvas.height = widthSize
+      canvas.width = widthSize
+      canvas.height = heightSize
+      
+      // define drawing area of webgl canvas. bottom corner, width / height
+      // XXX can't remember why we need the *2!
+      gl.viewport( 0,0,gl.drawingBufferWidth*2, gl.drawingBufferHeight*2 )
+
+      // create a buffer object to store vertices
+      const buffer = gl.createBuffer()
+
+      // point buffer at graphic context's ARRAY_BUFFER
+      gl.bindBuffer( gl.ARRAY_BUFFER, buffer )
+
+      // create two triangles (three vertices each) that fill entire canvas,
+      // with coordinates measured from -1 to 1.
+      const triangles = new Float32Array([
+        -1, -1,
+         1, -1,
+        -1,  1,
+        -1,  1,
+         1, -1,
+         1,  1
+      ])
+
+      // initialize memory for buffer and populate it. Give
+      // open gl hint contents will not change dynamically.
+      gl.bufferData( gl.ARRAY_BUFFER, triangles, gl.STATIC_DRAW )
+
+      // create vertex shader
+      let shaderScript = document.getElementById('vertex')
+      let shaderSource = shaderScript.text
+      // create shader object
+      const vertexShader = gl.createShader( gl.VERTEX_SHADER )
+      // define source text for our shader
+      gl.shaderSource( vertexShader, shaderSource )
+      // compile shader
+      gl.compileShader( vertexShader )
+
+      // create fragment shader
+      shaderScript = document.getElementById('fragment')
+      shaderSource = shaderScript.text
+      const fragmentShader = gl.createShader( gl.FRAGMENT_SHADER )
+      gl.shaderSource( fragmentShader, shaderSource )
+      gl.compileShader( fragmentShader )
+
+      // create shader program, which links vertex and fragment shaders
+      drawProgram = gl.createProgram()
+      gl.attachShader( drawProgram, vertexShader )
+      gl.attachShader( drawProgram, fragmentShader )
+      // report any errors in the fragment shader
+      console.log( gl.getShaderInfoLog( fragmentShader ) )
+      gl.linkProgram( drawProgram )
+      gl.useProgram( drawProgram )
+
+
+      
+      /* ALL ATTRIBUTE/UNIFORM INITIALIZATION MUST COME AFTER 
+      CREATING/LINKING/USING THE SHADER PROGAM */
+      
+      // find a pointer to the uniform "time" in our fragment shader
+      uTime = gl.getUniformLocation( drawProgram, 'time' ) 
+      uRes = gl.getUniformLocation( drawProgram, 'resolution' )
+      // send uniform values for uRes up to gpu
+      gl.uniform2f( uRes, widthSize, widthSize )
+      gl.uniform2f( uRes, heightSize,heightSize )
+
+      // get position attribute location in shader
+      var position = gl.getAttribLocation( drawProgram, 'a_position' )
+      // enable the attribute
+      gl.enableVertexAttribArray( position )
+      // this will point to the vertices in the last bound array buffer.
+      // In this example, we only use one array buffer, where we're storing 
+      // our vertices
+      gl.vertexAttribPointer( position, 2, gl.FLOAT, false, 0,0 )
+
+
+      
+      video = getVideo()
+    }
+
+    
+    function getVideo() {
+      const video = document.createElement('video');
+
+      // request video stream
+      navigator.mediaDevices.getUserMedia({
+        video:true
+      }).then( stream => { 
+        // this block happens when the video stream has been successfully requested
+        video.srcObject = stream
+        video.play()
+        makeTexture()
+      }) 
+        
+      return video
+    }
+    
+    function makeTexture() {
+      // create an OpenGL texture object
+      videoTexture = gl.createTexture()
+      
+      // this tells OpenGL which texture object to use for subsequent operations
+      gl.bindTexture( gl.TEXTURE_2D, videoTexture )
+        
+      // since canvas draws from the top and shaders draw from the bottom, we
+      // have to flip our canvas when using it as a shader.
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+
+      // how to map when texture element is more than one pixel
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR )
+      // how to map when texture element is less than one pixel
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR )
+      
+      // you must have these properties defined for the video texture to
+      // work correctly at non-power-of-2 sizes
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE )
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE )
+      
+      render()
+    }
+
+    // keep track of time via incremental frame counter
+    let time = 0
+    function render() {
+      // schedules render to be called the next time the video card requests 
+      // a frame of video
+      window.requestAnimationFrame( render )
+      
+      // update time on CPU and GPU
+      time++
+      gl.uniform1f( uTime, time )
+         
+      gl.texImage2D( 
+        gl.TEXTURE_2D,    // target: you will always want gl.TEXTURE_2D
+        0,                // level of detail: 0 is the base
+        gl.RGBA, gl.RGBA, // color formats
+        gl.UNSIGNED_BYTE, // type: the type of texture data; 0-255
+        video             // pixel source: could also be video or image
+      )
+      
+      //foo var
+      var locationOfFoo = gl.getUniformLocation(drawProgram, 'foo')
+      gl.useProgram(drawProgram)
+      gl.uniform1f(locationOfFoo, fooval)
+
+      //squares var
+      var locationOfSquares = gl.getUniformLocation(drawProgram, 'squares')
+      gl.useProgram(drawProgram)
+      gl.uniform1f(locationOfSquares, squaresval)
+
+      //positionsval
+      var locationOfPositionval = gl.getUniformLocation(drawProgram, 'positionval')
+      gl.useProgram(drawProgram)
+      gl.uniform1f(locationOfPositionval, positionvalues)
+
+      // draw triangles using the array buffer from index 0 to 6 (6 is count)
+      gl.drawArrays( gl.TRIANGLES, 0, 6 )
+    }
+  </script>
+</html>
